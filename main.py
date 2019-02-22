@@ -18,7 +18,7 @@ grammar = """
     call: NAME '(' expr ')'
 
     compound_stmt: if_stmt | while_stmt
-    if_stmt: 'if' test 'then' suite ('elif' test ':' suite)* ['else' ':' suite] 'fi'
+    if_stmt: 'if' test 'then' suite ('elif' test 'then' suite)* ['else' suite] 'fi'
     while_stmt: 'while' test 'then' suite 'done'
 
     test: or_test
@@ -69,14 +69,13 @@ program = """
 """
 
 program = """
-  FUNCTION funkceG(x):
-  if  x<0  then  x = 0; fi
-  if  x<14  then
-    r = funkceG(58-4*x)-9;
-  else
-    r = 39;
-  fi
-  RETURN r;
+    if x < 0 and y < 0 then
+        r = 5;
+    elif 0 < x or 0 < y then
+        r = 6;
+    else
+        r = 7;
+    fi
 """
 
 from EBNF import EBNF
@@ -93,7 +92,8 @@ tokens = tokenizer.tokenize(program)
 
 parser = Parser(grammar)
 ast = parser.parse(tokens)
-pprint(ast)
+parser.pretty(ast)
+#print(ast)
 
 
 def unit_test(func, codes):

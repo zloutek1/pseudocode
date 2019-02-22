@@ -13,4 +13,5 @@ class EBNF:
 
     def generate_rules(self):
         for rule in self.grammar:
-            print(rule)
+            pass
+            # print(rule)

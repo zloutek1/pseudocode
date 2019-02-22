@@ -4,6 +4,10 @@ import Tokenizer
 
 
 class reprwrapper(object):
+    """
+    function with custom repr when printed
+    """
+
     def __init__(self, repr, func):
         self._repr = repr
         self._func = func
@@ -20,10 +24,6 @@ def withrepr(reprfun):
     def _wrap(func):
         return reprwrapper(reprfun, func)
     return _wrap
-
-
-class ParseError(Exception):
-    pass
 
 
 class Success:
@@ -50,6 +50,9 @@ class Parser:
                        if not length else
                        length)
 
+        """
+        parse and store grammar rules
+        """
         grammar_lines = grammar.strip().split("\n")
         grammar_stripped = map(str.strip, grammar_lines)
         grammar_nonempty = filter(lambda rule: ":" in rule, grammar_stripped)
@@ -68,7 +71,9 @@ class Parser:
         if debug:
             return self
 
-        return self.SOF().value
+        retval = self.SOF()
+        assert isinstance(retval, Success), retval.value
+        return retval.value
 
     # --- [ Parser functions ] --- #
 
@@ -79,6 +84,9 @@ class Parser:
         return self.tokens[self.cursor]
 
     def eat(self, token_type, shouldCall=False):
+        """
+        consume a token, return Failure if type does not match
+        """
         @withrepr(lambda func: "Eat({token_type})".format(token_type=token_type))
         def call():
             token = self.peek()
@@ -86,7 +94,6 @@ class Parser:
                 self.cursor += 1
                 return token
             else:
-                # # print(f"ParseError: Unexpected token {token_type} got {self.peek()}")
                 return Failure(f"Unexpected token {token_type} got {self.peek()}")
 
         if shouldCall:
@@ -108,14 +115,11 @@ class Parser:
 
     @staticmethod
     def run(rule):
-        try:
-            if callable(rule):
-                result = rule()
-                return Parser._returnResult(result)
-            else:
-                return rule
-        except ParseError as e:
-            return Failure(e)
+        if callable(rule):
+            result = rule()
+            return Parser._returnResult(result)
+        else:
+            return rule
 
     def pretty(self, ast, indent=0):
         for node in ast:
@@ -127,6 +131,10 @@ class Parser:
     # --- [ Commands ] --- #
 
     def Either(self, *sequence, shouldCall=False):
+        """
+        regex: (a | b | c | ...)
+        """
+
         @withrepr(lambda func: "Either({sequence})".format(sequence=sequence))
         def call():
             for seq in sequence:
@@ -149,6 +157,9 @@ class Parser:
         return call
 
     def Sequence(self, *steps, shouldCall=False):
+        """
+        regex: (...)
+        """
         @withrepr(lambda func: "Sequence({steps})".format(steps=steps))
         def call():
             results = []
@@ -173,6 +184,9 @@ class Parser:
         return call
 
     def Optional(self, *steps, shouldCall=False):
+        """
+        regex: (...)?
+        """
         @withrepr(lambda func: "Optional({steps})".format(steps=steps))
         def call():
             sequence = self.Sequence(*steps)
@@ -193,6 +207,9 @@ class Parser:
         return call
 
     def ZeroOrMore(self, *steps, shouldCall=False):
+        """
+        regex: (...)*
+        """
         @withrepr(lambda func: "ZeroOrMore({steps})".format(steps=steps))
         def call():
             sequence = self.Sequence(*steps)
@@ -215,6 +232,9 @@ class Parser:
         return call
 
     def OneOrMore(self, *steps, shouldCall=False):
+        """
+        regex: (...)+
+        """
         @withrepr(lambda func: "OneOrMore({steps})".format(steps=steps))
         def call():
             sequence = self.Sequence(*steps)
@@ -358,6 +378,7 @@ class Parser:
             self.ZeroOrMore(
                 self.eat("'elif'"),
                 self.test,
+                self.eat("'then'"),
                 self.suite
             ),
             self.Optional(
