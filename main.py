@@ -92,8 +92,11 @@ tokens = tokenizer.tokenize(program)
 
 parser = Parser(grammar)
 ast = parser.parse(tokens)
-parser.pretty(ast)
-#print(ast)
+# parser.pretty(ast)
+
+from xml.etree.ElementTree import tostring
+with open("output.xml", 'wb') as file:
+    file.write(tostring(ast))
 
 
 def unit_test(func, codes):

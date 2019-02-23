@@ -1,12 +1,12 @@
 import functools
 from textwrap import indent
 import Tokenizer
+from xml.etree.ElementTree import Element, SubElement, tostring
+import sys
 
 
+"""
 class reprwrapper(object):
-    """
-    function with custom repr when printed
-    """
 
     def __init__(self, repr, func):
         self._repr = repr
@@ -24,6 +24,7 @@ def withrepr(reprfun):
     def _wrap(func):
         return reprwrapper(reprfun, func)
     return _wrap
+"""
 
 
 class Success:
@@ -72,6 +73,7 @@ class Parser:
             return self
 
         retval = self.SOF()
+        # retval = self.debug()
         assert isinstance(retval, Success), retval.value
         return retval.value
 
@@ -87,15 +89,22 @@ class Parser:
         """
         consume a token, return Failure if type does not match
         """
-        @withrepr(lambda func: "Eat({token_type})".format(token_type=token_type))
-        def call():
-            token = self.peek()
-            if token.type == token_type or token.value == token_type.strip("'"):
-                self.cursor += 1
-                return token
-            else:
-                return Failure(f"Unexpected token {token_type} got {self.peek()}")
+        class Call:
+            def __call__(_self):
+                token = self.peek()
+                if token.type == token_type or token.value == token_type.strip("'"):
+                    self.cursor += 1
+                    # return token
+                    elem = Element("token")
+                    elem.text = token.value
+                    return elem
+                else:
+                    return Failure(f"Unexpected token {token_type} got {self.peek()}")
 
+            def __repr__(_self):
+                return "Eat({token_type})".format(token_type=token_type)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -135,23 +144,36 @@ class Parser:
         regex: (a | b | c | ...)
         """
 
-        @withrepr(lambda func: "Either({sequence})".format(sequence=sequence))
-        def call():
-            for seq in sequence:
-                start_pos = self.cursor
+        class Call:
+            def __call__(_self):
+                tag_name = sys._getframe().f_back
+                while tag_name.f_code.co_name in ('__call__', 'run'):
+                    tag_name = tag_name.f_back
+                tag_name = tag_name.f_code.co_name
 
-                result = self.run(seq)
+                for seq in sequence:
+                    start_pos = self.cursor
 
-                if isinstance(result, Failure):
-                    self.rollback(self.cursor - start_pos)
+                    result = self.run(seq)
 
-                if isinstance(result, Success):
-                    if result.value:
-                        return result.value
+                    if isinstance(result, Failure):
+                        self.rollback(self.cursor - start_pos)
 
-            err = indent(result.value, " " * 4)
-            return Failure(f"Either failed at position {self.cursor}, got error {{ \n { err } \n }}")
+                    if isinstance(result, Success):
+                        if result.value is not None:
+                            elem = Element(tag_name)
+                            elem.append(result.value)
+                            return elem
 
+                            # return result.value
+
+                err = indent(result.value, " " * 4)
+                return Failure(f"Either failed at position {self.cursor}, got error {{ \n { err } \n }}")
+
+            def __repr__(_self):
+                return "Either({sequence})".format(sequence=sequence)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -160,25 +182,38 @@ class Parser:
         """
         regex: (...)
         """
-        @withrepr(lambda func: "Sequence({steps})".format(steps=steps))
-        def call():
-            results = []
-            for step in steps:
-                result = self.run(step)
 
-                if isinstance(result, Failure):
-                    err = indent(result.value, " " * 4)
-                    return Failure(f"Sequence failed at position {self.cursor}, got error {{ \n { err } \n }}")
+        class Call():
+            def __call__(_self):
+                tag_name = sys._getframe().f_back
+                while tag_name.f_code.co_name in ('__call__', 'run'):
+                    tag_name = tag_name.f_back
+                tag_name = tag_name.f_code.co_name
 
-                if isinstance(result, Success):
-                    if result.value:
-                        if type(result.value) is list and len(result.value) == 1:
-                            results += result.value
-                        else:
-                            results.append(result.value)
+                elem = Element(tag_name)
+                # results = []
+                for step in steps:
+                    result = self.run(step)
 
-            return results
+                    if isinstance(result, Failure):
+                        err = indent(result.value, " " * 4)
+                        return Failure(f"Sequence failed at position {self.cursor}, got error {{ \n { err } \n }}")
 
+                    if isinstance(result, Success):
+                        if result.value is not None:
+                            # if type(result.value) is list and len(result.value) == 1:
+                            #    results += result.value
+                            # else:
+                            #    results.append(result.value)
+                            elem.append(result.value)
+
+                return elem
+                # return results
+
+            def __repr__(_self):
+                return "Sequence({steps})".format(steps=steps)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -187,21 +222,34 @@ class Parser:
         """
         regex: (...)?
         """
-        @withrepr(lambda func: "Optional({steps})".format(steps=steps))
-        def call():
-            sequence = self.Sequence(*steps)
+        class Call:
+            def __call__(_self):
+                tag_name = sys._getframe().f_back
+                while tag_name.f_code.co_name in ('__call__', 'run'):
+                    tag_name = tag_name.f_back
+                tag_name = tag_name.f_code.co_name
 
-            start_pos = self.cursor
+                sequence = self.Sequence(*steps)
 
-            result = self.run(sequence)
+                start_pos = self.cursor
 
-            if isinstance(result, Failure):
-                self.rollback(self.cursor - start_pos)
-                return None
+                result = self.run(sequence)
 
-            if isinstance(result, Success):
-                return result.value
+                if isinstance(result, Failure):
+                    self.rollback(self.cursor - start_pos)
+                    return Element(tag_name)
+                    # return None
 
+                if isinstance(result, Success):
+                    elem = Element(tag_name)
+                    elem.extend(result.value)
+                    return elem
+                    # return result.value
+
+            def __repr__(_self):
+                return "Optional({steps})".format(steps=steps)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -210,23 +258,36 @@ class Parser:
         """
         regex: (...)*
         """
-        @withrepr(lambda func: "ZeroOrMore({steps})".format(steps=steps))
-        def call():
-            sequence = self.Sequence(*steps)
-            results = []
 
-            start_pos = self.cursor
-            result = self.run(sequence)
-            while not isinstance(result, Failure):
-                if isinstance(result, Success):
-                    results.append(result.value)
+        class Call:
+            def __call__(_self):
+                tag_name = sys._getframe().f_back
+                while tag_name.f_code.co_name in ('__call__', 'run'):
+                    tag_name = tag_name.f_back
+                tag_name = tag_name.f_code.co_name
+
+                sequence = self.Sequence(*steps)
+                # results = []
+                elem = Element(tag_name)
 
                 start_pos = self.cursor
                 result = self.run(sequence)
+                while not isinstance(result, Failure):
+                    if isinstance(result, Success):
+                        # results.append(result.value)
+                        elem.extend(result.value)
 
-            self.rollback(self.cursor - start_pos)
-            return results
+                    start_pos = self.cursor
+                    result = self.run(sequence)
 
+                self.rollback(self.cursor - start_pos)
+                # return results
+                return elem
+
+            def __repr__(_self):
+                return "ZeroOrMore({steps})".format(steps=steps)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -235,28 +296,42 @@ class Parser:
         """
         regex: (...)+
         """
-        @withrepr(lambda func: "OneOrMore({steps})".format(steps=steps))
-        def call():
-            sequence = self.Sequence(*steps)
-            results = []
 
-            start_pos = self.cursor
-            result = self.run(sequence)
-            while not isinstance(result, Failure):
-                if isinstance(result, Success):
-                    results.append(result.value)
+        class Call:
+            def __call__(_self):
+                tag_name = sys._getframe().f_back
+                while tag_name.f_code.co_name in ('__call__', 'run'):
+                    tag_name = tag_name.f_back
+                tag_name = tag_name.f_code.co_name
+
+                sequence = self.Sequence(*steps)
+                # results = []
+                elem = Element(tag_name)
 
                 start_pos = self.cursor
                 result = self.run(sequence)
+                while not isinstance(result, Failure):
+                    if isinstance(result, Success):
+                        # results.append(result.value)
+                        elem.extend(result.value)
 
-            self.rollback(self.cursor - start_pos)
+                    start_pos = self.cursor
+                    result = self.run(sequence)
 
-            if not results:
-                err = indent(result.value, " " * 4)
-                return Failure(f"OneOrMore failed at position {self.cursor}, got error {{ \n { err } \n }}")
+                self.rollback(self.cursor - start_pos)
 
-            return results
+                # if not results:
+                if not elem.getchildren():
+                    err = indent(result.value, " " * 4)
+                    return Failure(f"OneOrMore failed at position {self.cursor}, got error {{ \n { err } \n }}")
 
+                return elem
+                # return results
+
+            def __repr__(_self):
+                return "OneOrMore({steps})".format(steps=steps)
+
+        call = Call()
         if shouldCall:
             return call()
         return call
@@ -332,7 +407,8 @@ class Parser:
         result = self.Sequence(
             self.Either(
                 self.call,
-                self.assign
+                self.assign,
+                self.expr
             ),
             self.eat(';')
         )
